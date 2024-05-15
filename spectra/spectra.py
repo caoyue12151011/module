@@ -203,33 +203,42 @@ def calc_Q(model, tex, sw_ls):
     return Q_rot
 
 
-def specmod(x, model, T_bg, Switch, *para): 
+def specmod(x, model, T_bg, Switch, para_type, *para): 
     '''
-    To generate the spectrum given parameters {Tex, N, v, sigma_v}.
+    To generate the modeled spectrum.
 
     Parameters
     ----------
     x: [km/s], 1D array, line-of-sight velocity in the LSR frame. The 
         independent variable for calculating the spectrum
 
+    model: string, name of the transition, see spectra/Splatalog.p for 
+        available models
+
     T_bg: [K], scalar, background brightness temperature
 
-    model: string, name of the transition, see variable Splatalog for available
-        models
-
-    Switch: dict of switches controlling the output. Values are bools.
+    Switch: dict of switches controlling the returned spectrum. Bool values.
 
         'thin': whether to use the optically thin limit
-        'intensity': whether to calculate intensity (T) or brightness T (F)
+        'intensity': whether to calculate intensity or brightness temperature
         'hyperfine': whether to output the spectra of hyperfine lines, only 
             valid when thin=True
         'collapsed_hyperfine': whether to set the hyperfine velocity offsets to 
             0, used for demonstrating only one line, shouldn't use for 
             quantitative analyses
 
-    *para: 1D array, parameters of the model, extend para if you have 
-        multiple velocity components. Format: [tex, lgN1, v0_1, sigma_v1, 
-        lgN2, v0_2, sigma_v2, ...], where the universal tex is in K, 
+    para_type: str, type of the spectrum function. Can be 'T-N', 'A-T-N', 
+        'T-tau'. See the description of *para for how it influences 'para'.
+        'T-N' uses temperature & colomn density. 'A-T-N' adds an additional 
+        amplitude parameter in case that 'T-N' becomes wrongly optically 
+        thick and the spectrum's amplitude is limited. 'T-tau' replaces N with
+        opacity.
+
+    *para: 1D array, parameters of the model, Format varies with 'para_type'
+        'T-N':   [tex, lgN1, v0_1, sigma_v1, lgN2, v0_2, sigma_v2, ...]
+        'A-T-N': [amp1, tex, lgN1, v0_1, sigma_v1, lgN2, v0_2, sigma_v2, ...]
+        'T-tau': [tex, tau1, v0_1, sigma_v1, tau2, v0_2, sigma_v2, ...]
+        where tex is excitation temperature in K, amp=B_nu(tex) is in Jy/sr,
         lgNi, v0_i, sigma_vi are log10(column density) [cm^-2] of the TRACER, 
         bulk velocity [km/s] and 1-sigma velocity dispersion [km/s] of the ith 
         velocity component.
@@ -245,10 +254,19 @@ def specmod(x, model, T_bg, Switch, *para):
 
     Notices
     -------
-    See documentation spectra_rot.md for details of the models.
+    See spectra/model.md and other docs for details of the models.
     '''
+    # handle parameters -------------------------------------------------------
     para = np.array(para)
+
+    # spectral parameters
     tmp = Splatalog[model]
+    sw_ls = tmp['sw_ls']
+    C_N = tmp['C_N']
+    C_T1 = tmp['C_T1']
+    C_T2 = tmp['C_T2']
+    C_I = tmp['C_I']
+    v = tmp['v']
 
     # switches
     sw_thin = Switch['thin']
@@ -260,14 +278,7 @@ def specmod(x, model, T_bg, Switch, *para):
     tex = para[0]  # [K]
     lgN, v0, sigma_v = np.reshape(para[1:],(-1,3)).transpose()[...,np.newaxis]
 
-    # structure parameters
-    sw_ls = tmp['sw_ls']
-    C_N = tmp['C_N']
-    C_T1 = tmp['C_T1']
-    C_T2 = tmp['C_T2']
-    C_I = tmp['C_I']
-    v = tmp['v']
-
+    # calculation
     # whether collapse hyperfine lines
     if sw_chyper:
         v = np.zeros_like(v)
@@ -292,12 +303,7 @@ def specmod(x, model, T_bg, Switch, *para):
         tau = np.sum(TAU, axis=(0,1))  # shape = x.shape
 
     # terms
-    term_tau = None
-    if sw_thin:
-        term_tau = tau 
-    else:
-        term_tau = (1-np.exp(-tau))
-
+    term_tau = tau if sw_thin else (1-np.exp(-tau))
     term_T = 1/(np.exp(C_T2/tex)-1) - 1/(np.exp(C_T2/T_bg)-1)
 
     # modeled spectra
@@ -311,7 +317,7 @@ def specmod(x, model, T_bg, Switch, *para):
 
 def specmod_amp(x, model, T_bg, Switch, *para):
     '''
-    To generate the spectrum given parameters {amp, Tex, N, v, sigma_v}. 
+    To generate the spectrum given parameters {amp, Tex, v, sigma_v}. 
 
     Parameters
     ----------
@@ -398,12 +404,7 @@ def specmod_amp(x, model, T_bg, Switch, *para):
         tau = np.sum(TAU, axis=(0,1))  # shape = x.shape
 
     # terms
-    term_tau = None
-    if sw_thin:
-        term_tau = tau 
-    else:
-        term_tau = (1-np.exp(-tau))
-
+    term_tau = tau if sw_thin else (1-np.exp(-tau))
     term_T = 1/(np.exp(C_T2/T_bg)-1)
 
     # line intensity
@@ -420,7 +421,7 @@ def specmod_amp(x, model, T_bg, Switch, *para):
 
 def specmod_tau(x,model,T_bg,Switch,*para): # --------------------------------
     '''
-    To generate the spectrum given parameters Tex, tau, v, sigma_v.
+    To generate the spectrum given parameters {Tex, tau, v, sigma_v}.
 
 
     Parameters
@@ -499,19 +500,6 @@ def specmod_tau(x,model,T_bg,Switch,*para): # --------------------------------
     v = v[...,np.newaxis,np.newaxis] # shape = (n_hyper, 1, 1)
     R = R[...,np.newaxis,np.newaxis] # shape = (n_hyper, 1, 1)
 
-
-    # Q_rot
-    Q_rot = None
-    if sw_ls:
-        C_Q1 = tmp['C_Q1'] 
-        Q_rot = 1/C_Q1*tex*np.exp(C_Q1/3/tex)
-
-    else:
-        C_Q2 = tmp['C_Q2']
-        C_Q3 = tmp['C_Q3']
-        C_Q4 = tmp['C_Q4']
-        Q_rot = C_Q2*tex**1.5*np.exp(C_Q3/tex)*(1+C_Q4/tex**2)
-
     # opacity
     TAU = 2*(np.log(2)/np.pi)**.5*R*tau0*np.exp(-(x-v0-v)**2/(2*sigma_v**2))
         # shape = (n_hyper, n_component, len(x))
@@ -524,12 +512,7 @@ def specmod_tau(x,model,T_bg,Switch,*para): # --------------------------------
         tau = np.sum(TAU,axis=(0,1)) # shape = x.shape
 
     # terms
-    term_tau = None
-    if sw_thin:
-        term_tau = tau 
-    else:
-        term_tau = (1-np.exp(-tau))
-
+    term_tau = tau if sw_thin else (1-np.exp(-tau))
     term_T = 1/(np.exp(C_T2/tex)-1) - 1/(np.exp(C_T2/T_bg)-1)
 
     # line intensity
