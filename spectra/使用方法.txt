@@ -1,0 +1,9 @@
+1. 将'spectra'文件夹拷入指定目录'[dir]/spectra'
+
+2. 在python脚本中输入以下命令
+    import sys
+    sys.path.append('[dir]')
+    from spectra import spectra_rot
+
+3. 如下调用其中的函数
+    spectra_rot.find_peaks()等等
