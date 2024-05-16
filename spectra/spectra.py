@@ -1,5 +1,6 @@
 ''' 
-To analyze the spectral data with the rotational transition models. 
+To analyze the spectral data with the rotational transition models. Can handle
+transitions of linear or symmetric top molecules only.
 
 Functions
 ---------
@@ -10,10 +11,6 @@ find_peaks: find +/- peaks in spectra and estimate the parameters.
 calc_Q: calculate the rotational partition function
 
 specmod: model spectrum with {Tex, N, v, sigma_v} as parameters
-
-specmod_amp: Same as specmod but with {amp, Tex, N, v, sigma_v} as parameters
-
-specmod_tau: Same as specmod but with {Tex, tau, v, sigma_v} as parameters
 
 fitter: fit the spectral line with the given model
 
@@ -42,6 +39,7 @@ How to use
 3. Run fitter to fit the spectral lines.
 '''
 import time
+import socket
 import pickle
 import numpy as np
 import matplotlib.pyplot as plt
@@ -51,9 +49,16 @@ from scipy.optimize import curve_fit
 from scipy.ndimage import gaussian_filter1d
 from scipy.optimize import fsolve
 
+# path of module/
+hostname = socket.gethostname()
+path = None
+if hostname == 'Yues-MBP':
+    path = '/Users/yuecao/Documents/coding/module'
+elif hostname == 'yue-caos-ubuntu':
+    path = '/home/dev/Documents/coding/module'
+
 # load spectra data
-Splatalog = pickle.load(
-    open('/Users/yuecao/Documents/coding/module/spectra/Splatalog.p', 'rb'))
+Splatalog = pickle.load(open(f'{path}/spectra/Splatalog.p', 'rb'))
 
 
 def gaussian(x, *para): 
@@ -267,266 +272,76 @@ def specmod(x, model, T_bg, Switch, para_type, *para):
     C_T2 = tmp['C_T2']
     C_I = tmp['C_I']
     v = tmp['v']
-
-    # switches
-    sw_thin = Switch['thin']
-    sw_I = Switch['intensity']
-    sw_hyper = Switch['hyperfine']
-    sw_chyper = Switch['collapsed_hyperfine']
-
-    # component parameters, shape = (n_component, x)
-    tex = para[0]  # [K]
-    lgN, v0, sigma_v = np.reshape(para[1:],(-1,3)).transpose()[...,np.newaxis]
-
-    # calculation
-    # whether collapse hyperfine lines
-    if sw_chyper:
-        v = np.zeros_like(v)
-
-    # reshape, shape = (n_hyper, n_component, x)
-    C_N = C_N[..., np.newaxis, np.newaxis]
-    v = v[..., np.newaxis, np.newaxis] 
-
-    # Q_rot
-    Q_rot = calc_Q(model, tex, sw_ls)
-
-    # opacity, shape = (n_hyper, n_component, x)
-    TAU = (C_N * 10**lgN / sigma_v / Q_rot *
-           np.exp(-(x-v0-v)**2/(2*sigma_v**2)-C_T1/tex) *
-           (np.exp(C_T2/tex)-1)) 
-
-    if sw_thin and sw_hyper:
-        tau = np.sum(TAU, axis=1)  # shape = (n_hyper, len(x))
-        tau = np.concatenate((np.sum(tau,axis=0)[np.newaxis], tau))
-            # shape = (n_hyper+1, len(x))
-    else:
-        tau = np.sum(TAU, axis=(0,1))  # shape = x.shape
-
-    # terms
-    term_tau = tau if sw_thin else (1-np.exp(-tau))
-    term_T = 1/(np.exp(C_T2/tex)-1) - 1/(np.exp(C_T2/T_bg)-1)
-
-    # modeled spectra
-    y = None
-    if sw_I:
-        y = C_I * term_T * term_tau  # intensity [Jy/sr]
-    else:
-        y = C_T2 / np.log(1 + 1/term_tau/term_T)  # T_b [K]     
-    return y
-
-
-def specmod_amp(x, model, T_bg, Switch, *para):
-    '''
-    To generate the spectrum given parameters {amp, Tex, v, sigma_v}. 
-
-    Parameters
-    ----------
-    x: [km/s], 1D array, line-of-sight velocity in the LSR frame. The 
-        independent variable for calculating the spectrum
-
-    T_bg: [K], scalar, background brightness temperature
-
-    model: string, name of the transition, see variable Splatalog for available
-        models
-
-    Switch: dict of switches controlling the output. Values are bools.
-
-        'thin': whether to use the optically thin limit
-        'intensity': whether to calculate intensity (T) or brightness T (F)
-        'hyperfine': whether to output the spectra of hyperfine lines, only 
-            valid when thin=True
-        'collapsed_hyperfine': whether to set the hyperfine velocity offsets to 
-            0, used for demonstrating only one line, shouldn't use for 
-            quantitative analyses
-
-    *para: 1D array, parameters of the model, extend para if you have 
-        multiple velocity components. Format: [amp1, tex, lgN1, v0_1, sigma_v1, 
-        lgN2, v0_2, sigma_v2, ...], where the universal tex is in K, 
-        lgNi, v0_i, sigma_vi are log10(column density) [cm^-2] of the TRACER, 
-        bulk velocity [km/s] and 1-sigma velocity dispersion [km/s] of the ith 
-        velocity component, the universal amp=B_nu(tex) is in Jy/sr.
-
-    Returns
-    -------
-    y: the modeled spectrum.
-        If sw_thin & sw_hyper, y is 2D array with shape (n_hyper+1, len(x)),
-        where y[0] is the sum of all the hyperfine spectra. Otherwise, 
-        y is 1D array with the same length as x's.
-        If sw_I=True y is the intensity in Jy/sr, else y is the brightness 
-        temperature in K.
-
-    Notices
-    -------
-    See documentation spectra_rot.md for details of the models.
-    '''
-    para = np.array(para)
-    tmp = Splatalog[model]
-
-    # switches
-    sw_thin = Switch['thin']
-    sw_I = Switch['intensity']
-    sw_hyper = Switch['hyperfine']
-    sw_chyper = Switch['collapsed_hyperfine']
-
-    # component parameters, shape = (n_component,1)
-    amp, tex = para[:2] 
-    lgN, v0, sigma_v = np.reshape(para[2:],(-1,3)).transpose()[...,np.newaxis]
-
-    # structure parameters
-    sw_ls = tmp['sw_ls']
-    C_N = tmp['C_N']
-    C_T1 = tmp['C_T1']
-    C_T2 = tmp['C_T2']
-    C_I = tmp['C_I']
-    v = tmp['v']
-
-    # whether collapse hyperfine lines
-    if sw_chyper:
-        v = np.zeros_like(v)
-
-    # reshape, shape = (n_hyper, n_component, x)
-    C_N = C_N[..., np.newaxis, np.newaxis]
-    v = v[..., np.newaxis, np.newaxis] 
-
-    # Q_rot
-    Q_rot = calc_Q(model, tex, sw_ls)
-
-    # opacity, shape = (n_hyper, n_component, x)
-    TAU = (C_N * 10**lgN / sigma_v / Q_rot *
-           np.exp(-(x-v0-v)**2/(2*sigma_v**2)-C_T1/tex) *
-           (np.exp(C_T2/tex)-1)) 
-
-    if sw_thin and sw_hyper:
-        tau = np.sum(TAU, axis=1)  # shape = (n_hyper, len(x))
-        tau = np.concatenate((np.sum(tau,axis=0)[np.newaxis], tau))
-            # shape = (n_hyper+1, len(x))
-    else:
-        tau = np.sum(TAU, axis=(0,1))  # shape = x.shape
-
-    # terms
-    term_tau = tau if sw_thin else (1-np.exp(-tau))
-    term_T = 1/(np.exp(C_T2/T_bg)-1)
-
-    # line intensity
-    y = None
-    if sw_I:
-        y = (amp - C_I*term_T)*term_tau # intensity in Jy/sr
-    else:
-        y = C_T2/np.log(1+1/term_tau/(amp/C_I-term_T)) 
-            # Brightness temperature in K
-
-    return y
-
-
-
-def specmod_tau(x,model,T_bg,Switch,*para): # --------------------------------
-    '''
-    To generate the spectrum given parameters {Tex, tau, v, sigma_v}.
-
-
-    Parameters
-    ----------
-    x: [km/s], 1D array, line-of-sight velocity in the LSR frame. The 
-        independent variable for calculating the spectrum
-
-    model: string, name of the transition, see variable Splatalog for available
-        models
-
-    T_bg: [K], scalar, background brightness temperature
-
-    Switch: dict of switches for controlling the output. Values are bools.
-
-        'thin': whether to use the optically thin limit
-        'intensity': whether to calculate intensity (T) or brightness T (F)
-        'hyperfine': whether to output the spectra of hyperfine lines, only 
-            valid when thin=True
-        'collapsed_hyperfine': whether to set the hyperfine velocity offsets to 
-            0, used for demonstrating only one line, shouldn't use for 
-            quantitative analyses
-
-    *para: 1D array, parameters of the model, extend para if you have 
-        multiple velocity components. Format: [tex, Tau1, v0_1, sigma_v1, 
-        Tau2, v0_2, sigma_v2, ...], where the universal tex is in K, 
-        Taui, v0_i, sigma_vi are mean opacity, 
-        bulk velocity [km/s] and 1-sigma velocity dispersion [km/s] of the ith 
-        velocity component.
-
-
-    Returns
-    -------
-    y: the modeled spectrum.
-        If sw_thin & sw_hyper, y is 2D array with shape (n_hyper+1, len(x)),
-        where y[0] is the sum of all the hyperfine spectra. Otherwise, 
-        y is 1D array with the same length as x's.
-        If sw_I=True y is the intensity in Jy/sr, else y is the brightness 
-        temperature in K.
-
-
-    Notices
-    -------
-    See documentation spectra_rot.md for details of the models.
-    '''
-
-
-    para = np.array(para)
-    tmp = Splatalog[model]
-
-    # switches
-    sw_thin = Switch['thin']
-    sw_I = Switch['intensity']
-    sw_hyper = Switch['hyperfine']
-    sw_chyper = Switch['collapsed_hyperfine']
-
-
-    # component parameters, shape = (n_component,1)
-    tex = para[0] # [K]
-    tau0, v0, sigma_v = np.reshape(para[1:],(-1,3)).transpose()[...,np.newaxis]
-
-    # structure parameters
-    sw_ls = tmp['sw_ls']
-    C_N = tmp['C_N']
-    C_T1 = tmp['C_T1']
-    C_T2 = tmp['C_T2']
-    C_I = tmp['C_I']
-    v = tmp['v']
     R = tmp['R']
 
     # whether collapse hyperfine lines
     if sw_chyper:
         v = np.zeros_like(v)
 
-    # reshape
-    C_N = C_N[...,np.newaxis,np.newaxis] # shape = (n_hyper, 1, 1)
-    v = v[...,np.newaxis,np.newaxis] # shape = (n_hyper, 1, 1)
-    R = R[...,np.newaxis,np.newaxis] # shape = (n_hyper, 1, 1)
+    # reshape (n_hyper, n_component, x)
+    C_N = C_N[..., np.newaxis, np.newaxis]
+    v = v[..., np.newaxis, np.newaxis] 
+    R = R[..., np.newaxis, np.newaxis]
+
+    # switches
+    sw_thin = Switch['thin']
+    sw_I = Switch['intensity']
+    sw_hyper = Switch['hyperfine']
+    sw_chyper = Switch['collapsed_hyperfine']
+
+    # macroscopic parameters, shape = (n_component, x)
+    if para_type in ['T-N', 'T-tau']:
+        tex = para[0]
+        lgN, v0, sigma_v = np.reshape(para[1:],
+                                      (-1,3)).transpose()[...,np.newaxis]
+    elif para_type in ['A-T-N']:
+        amp, tex = para[:2] 
+        lgN, v0, sigma_v = np.reshape(para[2:],
+                                      (-1,3)).transpose()[...,np.newaxis]
+
+    # calculate the spectrum --------------------------------------------------
 
     # opacity
-    TAU = 2*(np.log(2)/np.pi)**.5*R*tau0*np.exp(-(x-v0-v)**2/(2*sigma_v**2))
-        # shape = (n_hyper, n_component, len(x))
+    if para_type in ['T-N', 'A-T-N']:
+        # Q_rot
+        Q_rot = calc_Q(model, tex, sw_ls)
+        # (n_hyper, n_component, x)
+        TAU = (C_N * 10**lgN / sigma_v / Q_rot *
+            np.exp(-(x-v0-v)**2/(2*sigma_v**2)-C_T1/tex) *
+            (np.exp(C_T2/tex)-1)) 
+        
+    elif para_type in ['T-tau']:
+        TAU = 2*(np.log(2)/np.pi)**.5*R*tau*np.exp(-(x-v0-v)**2/(2*sigma_v**2))
 
+    # collapse opacity
     if sw_thin and sw_hyper:
-        tau = np.sum(TAU,axis=1) # shape = (n_hyper, len(x))
-        tau = np.concatenate((np.sum(tau,axis=0)[np.newaxis],tau))
-             # shape = (n_hyper+1, len(x))
+        tau = np.sum(TAU, axis=1)  # (n_hyper, len(x))
+        tau = np.concatenate((np.sum(tau,axis=0)[np.newaxis], tau))
+            # (n_hyper+1, len(x))
     else:
-        tau = np.sum(TAU,axis=(0,1)) # shape = x.shape
+        tau = np.sum(TAU, axis=(0,1))  # shape = x.shape
 
     # terms
-    term_tau = tau if sw_thin else (1-np.exp(-tau))
-    term_T = 1/(np.exp(C_T2/tex)-1) - 1/(np.exp(C_T2/T_bg)-1)
-
-    # line intensity
-    y = None
-    if sw_I:
-        y = C_I*term_T*term_tau
-            # intensity in Jy/sr
-    else:
-        y = C_T2/np.log(1+1/term_tau/term_T)
-            # Brightness temperature in K
+    term_tau = tau if sw_thin else 1-np.exp(-tau)
+    if para_type in ['T-N', 'T-tau']:
+        term_T = 1/(np.exp(C_T2/tex)-1) - 1/(np.exp(C_T2/T_bg)-1)
+    elif para_type in ['A-T-N']:
+        term_T = 1/(np.exp(C_T2/T_bg)-1)
+    
+    # modeled spectra
+    if para_type in ['T-N', 'T-tau']:
+        if sw_I:
+            y = C_I * term_T * term_tau  # intensity [Jy/sr]
+        else:
+            y = C_T2 / np.log(1 + 1/term_tau/term_T)  # T_b [K]   
+    
+    elif para_type in ['A-T-N']:
+        if sw_I:
+            y = (amp - C_I*term_T)*term_tau 
+        else:
+            y = C_T2 / np.log(1 + 1/term_tau/(amp/C_I-term_T)) 
 
     return y
-
-
 
 
 def fitter(f,x,y,model,para0,bounds,T_bg,Switch): # ---------------
@@ -730,6 +545,12 @@ def test():
     #'''
 
 
+keys = ['A0', 'B0', 'C0', 'C_I', 'C_N', 'C_Q1', 'C_Q2', 'C_Q3', 'C_Q4', 
+        'C_T1', 'C_T2', 'E_u', 'J', 'J_u', 'K', 'R', 'S', 'dJ', 'g_u', 
+        'mu', 'nu0', 'shape', 'sigma', 'sw_ls', 'v']
+
+for line in sorted(Splatalog):
+    print(line, Splatalog[line]['B0'])
 
 
 

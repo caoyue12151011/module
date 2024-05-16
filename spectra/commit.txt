@@ -1,3 +1,0 @@
-
-In spectra/
-1. Merged similar func specmod(), specmod_amp(), specmod_tau() to specmod().
