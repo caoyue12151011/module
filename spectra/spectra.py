@@ -39,26 +39,25 @@ How to use
 3. Run fitter to fit the spectral lines.
 '''
 import time
+import dill
 import socket
-import pickle
 import numpy as np
 import matplotlib.pyplot as plt
-import astropy.constants as ct 
 import astropy.units as u 
-from scipy.optimize import curve_fit
+import astropy.constants as ct 
+from scipy.optimize import curve_fit, fsolve
 from scipy.ndimage import gaussian_filter1d
-from scipy.optimize import fsolve
 
-# path of module/
+# path of this package
 hostname = socket.gethostname()
 path = None
 if hostname == 'Yues-MBP':
-    path = '/Users/yuecao/Documents/coding/module'
+    path = '/Users/yuecao/Documents/coding/module/spectra'
 elif hostname == 'yue-caos-ubuntu':
-    path = '/home/dev/Documents/coding/module'
+    path = '/home/dev/Documents/coding/module/spectra'
 
 # load spectra data
-Splatalog = pickle.load(open(f'{path}/spectra/Splatalog.p', 'rb'))
+Splatalog = dill.load(open(f'{path}/data/Splatalog.p', 'rb'))
 
 
 def gaussian(x, *para): 
@@ -545,12 +544,7 @@ def test():
     #'''
 
 
-keys = ['A0', 'B0', 'C0', 'C_I', 'C_N', 'C_Q1', 'C_Q2', 'C_Q3', 'C_Q4', 
-        'C_T1', 'C_T2', 'E_u', 'J', 'J_u', 'K', 'R', 'S', 'dJ', 'g_u', 
-        'mu', 'nu0', 'shape', 'sigma', 'sw_ls', 'v']
 
-for line in sorted(Splatalog):
-    print(line, Splatalog[line]['B0'])
 
 
 
