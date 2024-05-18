@@ -8,8 +8,8 @@ Molatalog: dict of parameters of molecules (linear or symmetric top only)
 
     name: e.g. 'NH3', 'H13CO+'
 
-        'sw_ls': True for linear, False for symmetric top
-        'shape': [symmetric top only] 'oblate' or 'prolate'
+        'shape': 'linear', 'oblate' or 'prolate', latter two are for 
+            symmetric top molecules
         'A0': [symmetric top only] Rigid rotor constants
         'B0': Rigid rotor constants
         'C0': [symmetric top only] Rigid rotor constants
@@ -25,7 +25,6 @@ Splatalog: dict of parameters of transitions
         'dJ': change of J 
         'K': nominal K quantum number 
         'E_u': Upper energy level
-        'S': Line strength
         'nu0': Rest frequency
         'R': 1darray, Relative strength of hyperfine lines, sum(R)=1
         'v': 1darray, Velocity shifts of hyperfine lines w.r.t. 'nu0', 
@@ -35,22 +34,28 @@ Splatalog: dict of parameters of transitions
         # derived parameters
         'J_u': upper J quantum number
         'g_u': Degeneracy of the upper energy level
-        'C_I', 'C_N', 'C_Q1', 'C_T1', 'C_T2':
-                dimensionless constants used for calculation
+        'S': Line strength
+        'C_I', 'C_N' 'C_T1', 'C_T2': dimensionless constants used for 
+                                     calculation
+        'C_Q1': [linear only]
         'C_Q2', 'C_Q3', 'C_Q4': [symmetric top only]
 """
 import dill
 import socket
 import numpy as np
 import astropy.units as u
+import astropy.constants as ct
 
 # path of this package
 hostname = socket.gethostname()
 path = None
-if hostname == 'Yues-MBP':
+if hostname == 'Yues-MacBook-Pro.local':
     path = '/Users/yuecao/Documents/coding/module/spectra'
 elif hostname == 'yue-caos-ubuntu':
     path = '/home/dev/Documents/coding/module/spectra'
+
+# load original splatalog
+Splatalog0 = dill.load(open(f'{path}/data/Splatalog0.p','rb'))
 
 # Molatalog -------------------------------------------------------------------
 
@@ -165,14 +170,22 @@ for line in data:
 
 for line in Splatalog:
     mole = line.split('_')[0]
-    sw_ls = Molatalog[mole]['sw_ls']
 
+    # molecular constants
+    shape = Molatalog[mole]['shape']
+    mu = Molatalog[mole]['mu']
+    B0 = Molatalog[mole]['B0']
+    if shape != 'linear':
+        A0 = Molatalog[mole]['A0']
+        C0 = Molatalog[mole]['C0']
+        sigma = Molatalog[mole]['sigma']
+
+    # basic transitional constants
     tmp = Splatalog[line]
     J = tmp['J']
     dJ = tmp['dJ']
     K = tmp['K']
     E_u = tmp['E_u']
-    S = tmp['S']
     nu0 = tmp['nu0']
     R = tmp['R']
     v = tmp['v']
@@ -182,21 +195,76 @@ for line in Splatalog:
 
     # g_u
     g_Ju = 2*J_u + 1
-    g_Ku = 2 if (not sw_ls) and K != 0 else 1
+    g_Ku = 2 if (shape != 'linear') and K != 0 else 1
     g_Iu = 1
     g_u = g_Ju * g_Ku * g_Iu
 
+    # S
+    if dJ == -1:
+        S = (J**2-K**2)/J/(2*J+1)
+    elif dJ == 0:
+        S = K**2/J/(J+1)
+    elif dJ == 1:
+        S = ((J+1)**2-K**2)/(J+1)/(2*J+1)
 
+    # C_I
+    C_I = (2*ct.h* nu0**3 / ct.c**2).to_value(u.Jy)
 
-# saves
+    # C_N
+    C_N = 4*2**.5 * np.pi**2.5 * S * mu**2 * R * g_u / (3*ct.h)
+    C_N = C_N.to_value(u.km*u.cm**2/u.s)
+
+    # C_T
+    C_T1 = (E_u/ct.k_B).to_value(u.K)
+    C_T2 = (ct.h*nu0/ct.k_B).to_value(u.K)
+
+    # C_Q1-4
+    if shape == 'linear':
+        C_Q1 = (ct.h*B0/ct.k_B).to_value(u.K)
+    else:
+        m = B0/A0 if shape=='prolate' else B0/C0
+        C_Q2 = ((m*np.pi)**.5/sigma*(ct.k_B/ct.h/B0)**1.5).to_value(u.K**-1.5)
+        C_Q3 = (ct.h*B0*(4-m)/(12*ct.k_B)).to_value(u.K)
+        C_Q4 = ((ct.h*B0*(1-m)/ct.k_B)**2/90).to_value(u.K**2)
+
+    # save
+    Splatalog[line]['J_u'] = J_u
+    Splatalog[line]['g_u'] = g_u
+    Splatalog[line]['S'] = S
+    Splatalog[line]['C_I'] = C_I
+    Splatalog[line]['C_N'] = C_N
+    Splatalog[line]['C_T1'] = C_T1
+    Splatalog[line]['C_T2'] = C_T2
+    if shape == 'linear':
+        Splatalog[line]['C_Q1'] = C_Q1
+    else:
+        Splatalog[line]['C_Q2'] = C_Q2
+        Splatalog[line]['C_Q3'] = C_Q3
+        Splatalog[line]['C_Q4'] = C_Q4
+
+# self-check ..................................................................
+"""
+Except for 'C18O_1-0', 'CO_2-1', which have changed B0 values, all constants 
+have differences < 1e-6 but > 1e-7.
+"""
+# parameters 
+tol = 1e-6
+keys = ['J_u','g_u','S','C_I','C_N','C_T','C_Q1','C_Q2','C_Q3','C_Q4']
+
+for line in sorted(Splatalog):
+    tmp = Splatalog[line]
+    tmp0 = Splatalog0[line]
+
+    for key in keys:
+        if key in tmp:
+            value = np.array(tmp[key])
+            value0 = np.array(tmp0[key])
+            diff = np.max(np.abs(value-value0)/value0)
+            if diff > tol:
+                print(f'{line} {key}: diff > {tol:.1e}.')
+
+# saves -----------------------------------------------------------------------
+
+# dills
 dill.dump(Molatalog, open(f'{path}/data/Molatalog.p','wb'))
 dill.dump(Splatalog, open(f'{path}/data/Splatalog.p','wb'))
-
-
-# Splatalog0 = dill.load(open('data/Splatalog0.p','rb'))
-# for line in sorted(Splatalog):
-#     R = Splatalog[line]['R']
-#     v = Splatalog[line]['v']
-#     R = ','.join([str(i) for i in R])
-#     v = ','.join([str(i) for i in v])
-#     print(f'{line}\t{R}\t{v}')

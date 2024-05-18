@@ -133,8 +133,11 @@ $$
 $$
 \begin{flalign}
 \tau_{\nu ij}(v)&=C_N\left(\frac{N_i}{\rm cm^{-2}}\right)\left(\frac{\sigma_{vi}}{\rm km\ s^{-1}}\right)^{-1}\frac{1}{Q_{\rm rot}(T_{\rm ex})}e^{-\frac{(v-v_{0i}-\delta v_j)^2}{2\sigma_{vi}^2}-C_{T1}\left(\frac{T_{\rm ex}}{\rm K}\right)^{-1}}\left(e^{C_{T2}\left(\frac{T_{\rm ex}}{\rm K}\right)^{-1}}-1\right)\\
+
 \frac{\Delta I_\nu(v)}{\rm Jy\ sr^{-1}}&=C_I\left[\left(e^{C_{T2}\left(\frac{T_{\rm ex}}{\rm K}\right)^{-1}}-1\right)^{-1}-\left(e^{C_{T2}\left(\frac{T_{\rm bg}}{\rm K}\right)^{-1}}-1\right)^{-1}\right]\left(1-e^{-\tau_\nu(v)}\right)\label{eq:intensity_num}\\
-Q_{\rm rot,lin}&=\frac{1}{C_{Q1}}\exp\left(\frac{C_{Q1}}3\left(\frac{T_{\rm ex}}{\rm K}\right)^{-1}\right)\\
+
+Q_{\rm rot,lin}&=\frac{1}{C_{Q1}}\left(\frac{T_{\rm ex}}{\rm K}\right)\exp\left(\frac{C_{Q1}}3\left(\frac{T_{\rm ex}}{\rm K}\right)^{-1}\right)\\
+
 Q_{\rm rot,sym}&=C_{Q2}\left(\frac{T_{\rm ex}}{\rm K}\right)^\frac{3}2\exp\left(C_{Q3}\left(\frac{T_{\rm ex}}{\rm K}\right)^{-1}\right)\left[1+C_{Q4}\left(\frac{T_{\rm ex}}{\rm K}\right)^{-2}\right]
 \end{flalign}
 $$
@@ -159,7 +162,9 @@ $$
 
 ### **6. Flowchart of** `spectra`
 
-<img src="/Users/yuecao/Documents/astro/spectra/model.assets/Screenshot 2024-05-14 at 12.22.02.png" alt="Screenshot 2024-05-14 at 12.22.02" style="zoom:50%;" />
+​    This flowchart shows how the spectral model is built.
+
+![Screenshot 2024-05-18 at 21.52.25](/Users/yuecao/Documents/coding/module/spectra/docs/model.assets/Screenshot 2024-05-18 at 21.52.25.png)
 
 ### **7. Some discussions**
 
@@ -169,19 +174,13 @@ $$
 2. One velocity component and one hyperfine line. 
 3. $T_{\rm bg}=0$.
 
-of the modeled spectrum as a function of
+​    In this way $\Delta I_{\nu,\rm p}(N)$ is similar to function $1-e^{-x}$, which saturates at high $N$. $\Delta I_{\nu,\rm p}(T_{\rm ex})$ is similar to function 
+$$
+\frac{1-e^{-\frac{1}xe^{\frac{1}x-1}}}{e^\frac{1}x-1}
+$$
+When $x\gg1$ (high $T_{\rm ex}$), it is close to $1/x$; when $x\ll1$, it is close to $e^{-1/x}$. These functions are demonstrated below.
 
-and .
-
-In this way is similar to the function
-
-, which saturates at high . is similar to the
-
-In this way function close to
-
-is similar to the function , which saturates at high . is similar to the . When (high ), it is close to ; when (low ), it is
-
-. These functions are demonstrated below.
+<img src="/Users/yuecao/Documents/coding/module/spectra/docs/model.assets/Screenshot 2024-05-18 at 22.37.24.png" alt="Screenshot 2024-05-18 at 22.37.24" style="zoom:80%;" />
 
 
 

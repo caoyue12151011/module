@@ -6,6 +6,13 @@ plt.rcParams['ytick.labelsize'] = 12
 plt.rcParams['axes.labelsize'] = 16
 plt.rcParams['legend.fontsize'] = 13
 
+# change default matplotlib fonts (Jupyter notebook)
+plt.rcParams['font.family'] = 'Times New Roman'
+plt.rcParams['mathtext.fontset'] = 'cm'
+plt.rcParams['xtick.labelsize'] = 24
+plt.rcParams['ytick.labelsize'] = 24
+plt.rcParams['axes.labelsize'] = 32
+plt.rcParams['legend.fontsize'] = 26
 
 # draw a circle
 ax = plt.gca()

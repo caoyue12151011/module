@@ -1,4 +1,6 @@
 ''' 
+TODO: why NH2D is here but not symmetric top?
+
 To analyze the spectral data with the rotational transition models. Can handle
 transitions of linear or symmetric top molecules only.
 
@@ -41,6 +43,7 @@ How to use
 import time
 import dill
 import socket
+import matplotlib
 import numpy as np
 import matplotlib.pyplot as plt
 import astropy.units as u 
@@ -48,15 +51,24 @@ import astropy.constants as ct
 from scipy.optimize import curve_fit, fsolve
 from scipy.ndimage import gaussian_filter1d
 
+# change default matplotlib fonts
+plt.rcParams['font.family'] = 'Times New Roman'
+plt.rcParams['mathtext.fontset'] = 'cm'
+plt.rcParams['xtick.labelsize'] = 12
+plt.rcParams['ytick.labelsize'] = 12
+plt.rcParams['axes.labelsize'] = 16
+plt.rcParams['legend.fontsize'] = 13
+
 # path of this package
 hostname = socket.gethostname()
 path = None
-if hostname == 'Yues-MBP':
+if hostname == 'Yues-MacBook-Pro.local':
     path = '/Users/yuecao/Documents/coding/module/spectra'
 elif hostname == 'yue-caos-ubuntu':
     path = '/home/dev/Documents/coding/module/spectra'
 
 # load spectra data
+Molatalog = dill.load(open(f'{path}/data/Molatalog.p', 'rb'))
 Splatalog = dill.load(open(f'{path}/data/Splatalog.p', 'rb'))
 
 
@@ -180,7 +192,7 @@ def find_peaks(x, y, sign, lim):
     return para0
 
 
-def calc_Q(model, tex, sw_ls):
+def calc_Q(model, tex, shape):
     '''
     To calculate the rotational partition function Q_rot(Tex).
 
@@ -188,7 +200,7 @@ def calc_Q(model, tex, sw_ls):
     ------
     model: string, name of the transition
     tex: [K], scalar or ndarray, excitation temperature
-    sw_ls: T for linear, F for symmetric top molecules
+    shape: 'linear', 'oblate' or 'prolate'
 
     Outputs
     -------
@@ -196,7 +208,7 @@ def calc_Q(model, tex, sw_ls):
     '''
     tmp = Splatalog[model]
     Q_rot = None
-    if sw_ls:
+    if shape == 'linear':
         C_Q1 = tmp['C_Q1']
         Q_rot = 1/C_Q1 * tex * np.exp(C_Q1/3/tex)
     else:
@@ -260,18 +272,28 @@ def specmod(x, model, T_bg, Switch, para_type, *para):
     -------
     See spectra/model.md and other docs for details of the models.
     '''
-    # handle parameters -------------------------------------------------------
+    # handle parameters .......................................................
     para = np.array(para)
+    mole = model.split('_')[0]
 
     # spectral parameters
+    shape = Molatalog[mole]['shape']
     tmp = Splatalog[model]
-    sw_ls = tmp['sw_ls']
     C_N = tmp['C_N']
     C_T1 = tmp['C_T1']
     C_T2 = tmp['C_T2']
     C_I = tmp['C_I']
     v = tmp['v']
     R = tmp['R']
+
+    # switches
+    sw_thin = Switch['thin']
+    sw_I = Switch['intensity']
+    sw_hyper = Switch['hyperfine']
+    sw_chyper = Switch['collapsed_hyperfine']
+
+    # make velocities dimensionless
+    v = v.to_value(u.km/u.s)
 
     # whether collapse hyperfine lines
     if sw_chyper:
@@ -282,12 +304,6 @@ def specmod(x, model, T_bg, Switch, para_type, *para):
     v = v[..., np.newaxis, np.newaxis] 
     R = R[..., np.newaxis, np.newaxis]
 
-    # switches
-    sw_thin = Switch['thin']
-    sw_I = Switch['intensity']
-    sw_hyper = Switch['hyperfine']
-    sw_chyper = Switch['collapsed_hyperfine']
-
     # macroscopic parameters, shape = (n_component, x)
     if para_type in ['T-N', 'T-tau']:
         tex = para[0]
@@ -297,17 +313,17 @@ def specmod(x, model, T_bg, Switch, para_type, *para):
         amp, tex = para[:2] 
         lgN, v0, sigma_v = np.reshape(para[2:],
                                       (-1,3)).transpose()[...,np.newaxis]
-
-    # calculate the spectrum --------------------------------------------------
+    
+    # calculate the spectrum ..................................................
 
     # opacity
     if para_type in ['T-N', 'A-T-N']:
         # Q_rot
-        Q_rot = calc_Q(model, tex, sw_ls)
+        Q_rot = calc_Q(model, tex, shape)
         # (n_hyper, n_component, x)
         TAU = (C_N * 10**lgN / sigma_v / Q_rot *
-            np.exp(-(x-v0-v)**2/(2*sigma_v**2)-C_T1/tex) *
-            (np.exp(C_T2/tex)-1)) 
+               np.exp(-(x-v0-v)**2/(2*sigma_v**2) - C_T1/tex) *
+               (np.exp(C_T2/tex)-1)) 
         
     elif para_type in ['T-tau']:
         TAU = 2*(np.log(2)/np.pi)**.5*R*tau*np.exp(-(x-v0-v)**2/(2*sigma_v**2))
@@ -343,19 +359,19 @@ def specmod(x, model, T_bg, Switch, para_type, *para):
     return y
 
 
-def fitter(f,x,y,model,para0,bounds,T_bg,Switch): # ---------------
+def fitter(specmod, x, y, model, para0, bounds, T_bg, Switch, para_type):
     '''
     To fit the spectrum with the model in specmod.
 
     Parameters
     ----------
-    f: the model function
+    specmod: the model function, see spectra.specmod
     x: [km/s], 1D array, los velocity of the spectrum
     y: 1D array, the spectrum
     model: string, name of the model
-    para0: 1D array, initial guesses
+    para0: 1D array, initial guesses, cf. spectra.specmod
     bounds: ([p1_min, p2_min, ...], [p1_max, p2_max, ...])
-    T_bg, Switch: cf. spectra_rot.specmod
+    T_bg, Switch, para_type: cf. spectra.specmod
 
     Returns
     --------
@@ -363,57 +379,48 @@ def fitter(f,x,y,model,para0,bounds,T_bg,Switch): # ---------------
     para: 1D array, optimized parameters
     perr: 1D array, uncertainties of parameters
     '''
-
     try:
-        para, pcov = curve_fit(lambda x,*para: f(x,model,T_bg,Switch,*para),
-            x,y,para0,bounds=bounds) 
+        para, pcov = curve_fit(
+            lambda x, *para: specmod(x, model, T_bg, Switch, para_type, *para),
+            x, y, para0, bounds=bounds) 
         perr = np.sqrt(np.diag(pcov))
         return True, para, perr
-
     except:
         return False, np.full(len(para0),np.nan), np.full(len(para0),np.nan)
 
     
-
-def calc_tau(tex,lgN,sigma_v,model): 
+def calc_tau(tex, lgN, sigma_v, model): 
     '''
-    To calculate the mean opacity of a Gaussian velocity component, see 
-    spectra_rot.md for the detailed algorithm.
+    To calculate the mean opacity of a Gaussian velocity component, cf. 
+    docs/model.md.
     
     Inputs
     ------
-    tex: [K], scalar or nD array, excitation temperature
-    lgN: scalar or nD array with the same shape as tex, log10(N_tracer [cm^-2])
-    sigma_v: [km/s], scalar or nD array with the same shape as tex, 
+    tex: [K], scalar or np.ndarray, excitation temperature
+    lgN: scalar or np.ndarray of the same shape as tex, log10(N_tracer [cm^-2])
+    sigma_v: [km/s], scalar or np.ndarray with the same shape as tex, 
         1-sigma velocity dispersion
-    model: string, name of the transition, see Splatalog for possible values
+    model: string, name of the transition
     
     Returns
     -------
     tau: mean opacity
     '''
-
     tmp = Splatalog[model]
-
-    sw_ls = tmp['sw_ls']
+    shape = tmp['shape']
     C_N = tmp['C_N']
     C_T1 = tmp['C_T1']
     C_T2 = tmp['C_T2']
-    
-    # Q_rot
-    Q_rot = calc_Q(model,tex,sw_ls)
 
-    # tau
-    tau = (.5*(np.pi/np.log(2))**.5* np.sum(C_N)* 10**lgN/sigma_v/Q_rot*
-        np.exp(-C_T1/tex)* (np.exp(C_T2/tex)-1))
-    
+    Q_rot = calc_Q(model, tex, shape)
+    tau = (.5*(np.pi/np.log(2))**.5 * np.sum(C_N) * 10**lgN / sigma_v / Q_rot *
+           np.exp(-C_T1/tex) * (np.exp(C_T2/tex)-1))
     return tau
 
-    
 
-def calc_lgN(tex,tau,sigma_v,model): 
+def calc_lgN(tex, tau, sigma_v, model): 
     '''
-    To calculate lgN, see spectra_rot.md for the detailed algorithm.
+    To calculate lgN of a Gaussian velocity component, cf. docs/model.md.
     
     Inputs
     ------
@@ -427,31 +434,24 @@ def calc_lgN(tex,tau,sigma_v,model):
     -------
     lgN: log10(N/cm^-2)
     '''
-
     tmp = Splatalog[model]
-
-    sw_ls = tmp['sw_ls']
+    shape = tmp['shape']
     C_N = tmp['C_N']
     C_T1 = tmp['C_T1']
     C_T2 = tmp['C_T2']
     
-    # Q_rot
-    Q_rot = calc_Q(model,tex,sw_ls)
-
-    # lgN
-    lgN = np.log10(2*(np.log(2)/np.pi)**.5*tau/np.sum(C_N)*sigma_v*Q_rot*
-        np.exp(C_T1/tex)/(np.exp(C_T2/tex)-1))
-
+    Q_rot = calc_Q(model, tex, shape)
+    lgN = np.log10(2*(np.log(2)/np.pi)**.5 * tau / np.sum(C_N) * sigma_v * 
+                   Q_rot * np.exp(C_T1/tex) / (np.exp(C_T2/tex)-1))
     return lgN
-
     
 
-def calc_lgN_ch(tex,tau,dv,model): 
+def calc_lgN_ch(tex, tau, dv, model): 
     '''
     To calculate lgN in a velocity range (without the assumption of
     Gaussian velocity profile) given tau, tex, dv. Useful for e.g. deriving 
     CO column density given tau (from 12CO/13CO data) and 12CO (2-1) intensity. 
-    See spectra_rot.md for the detailed algorithm.
+    cf. docs/model.md.
     
     Inputs
     ------
@@ -466,15 +466,12 @@ def calc_lgN_ch(tex,tau,dv,model):
 
     Notes
     -----
-    Actually, dv is equivalent to 2(2ln2)^.5*sigma_v, i.e.
-    calc_lgN_ch(tex,tau,dv,model) = calc_lgN(tex,tau,dv/2(2ln2)^.5,model)
+    Actually, dv is equivalent to 2(2ln2)^.5*sigma_v in calc_lgN().
     '''
-
-    return calc_lgN(tex,tau,dv/(2*(2*np.log(2))**.5),model)
-
+    return calc_lgN(tex, tau, dv/(2*(2*np.log(2))**.5), model)
 
 
-def calc_tau_iso_ratio(r_I,r_N):
+def calc_tau_iso_ratio(r_I, r_N):
     '''
     To calculate the opacity given the line ratio & the column density ratio of 
     two isotopic species, i.e. to solve the equation 
@@ -506,19 +503,42 @@ def calc_tau_iso_ratio(r_I,r_N):
     -------
     tau1: the opacity of the 1st species
     '''
-
     tau1 = np.nan 
-    if 1<r_I<r_N or r_N<r_I<1:
+    if 1 < r_I < r_N or r_N < r_I < 1:
         epsilon = .5
-        x0 = epsilon*(r_I/r_N)**(1/(r_N-1)) # initial guess
-        x = fsolve(lambda x, r_I, r_N: x**r_N-r_I*x+r_I-1,x0,args=(r_I,r_N))
+        x0 = epsilon * (r_I/r_N)**(1/(r_N-1))  # initial guess
+        x = fsolve(lambda x, r_I, r_N: x**r_N - r_I*x + r_I - 1,
+                   x0, args=(r_I,r_N))
         tau1 = -np.log(x)*r_N
 
     return tau1
 
 
-
 def test():
+    ''' Q vs tex
+    tex = np.logspace(-1, 4, 1000)
+    cmap = matplotlib.colormaps['hsv']
+
+    n_line = len(Splatalog)
+    colors = cmap(np.linspace(0, .7, n_line))
+    
+    plt.figure()
+    plt.xscale('log')
+    plt.yscale('log')
+    for i in range(n_line):
+        line = sorted(Splatalog)[i]
+        name = line.split('_')[0]
+        shape = Molatalog[name]['shape']
+        Q = calc_Q(line, tex, shape)
+        plt.plot(tex, Q, color=colors[i], label=f'{line}')
+    plt.legend()
+    plt.grid()
+    plt.xlabel(r'$T_{\rm ex}\rm\ (K)$')
+    plt.ylabel(r'$Q_{\rm rot}$')
+    plt.tight_layout()
+    plt.savefig(f'{path}/image/Q_vs_tex.pdf')
+    plt.show()
+    #'''
 
     ''' calc_tau_iso_ratio with different initial guesses
     # Conclusion: solution is good as long as epsilon < 1.
@@ -542,12 +562,3 @@ def test():
     plt.grid()
     plt.show()
     #'''
-
-
-
-
-
-
-
-
-
