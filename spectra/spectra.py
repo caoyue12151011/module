@@ -40,9 +40,9 @@ How to use
     apparent line. 
 3. Run fitter to fit the spectral lines.
 '''
+import os
 import time
 import dill
-import socket
 import matplotlib
 import numpy as np
 import matplotlib.pyplot as plt
@@ -60,12 +60,7 @@ plt.rcParams['axes.labelsize'] = 16
 plt.rcParams['legend.fontsize'] = 13
 
 # path of this package
-hostname = socket.gethostname()
-path = None
-if hostname == 'Yues-MacBook-Pro.local':
-    path = '/Users/yuecao/Documents/coding/module/spectra'
-elif hostname == 'yue-caos-ubuntu':
-    path = '/home/dev/Documents/coding/module/spectra'
+path = os.path.dirname(os.path.abspath(__file__))
 
 # load spectra data
 Molatalog = dill.load(open(f'{path}/data/Molatalog.p', 'rb'))

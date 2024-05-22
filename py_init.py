@@ -14,6 +14,9 @@ plt.rcParams['ytick.labelsize'] = 24
 plt.rcParams['axes.labelsize'] = 32
 plt.rcParams['legend.fontsize'] = 26
 
+# get path of this script
+path = os.path.dirname(os.path.abspath(__file__))
+
 # draw a circle
 ax = plt.gca()
 ax.add_artist(plt.Circle((x,y),r,facecolor=RGB,edgecolor='none'))

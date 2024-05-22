@@ -1,0 +1,21 @@
+#T      Surface Tension of Water in contact with Air
+#(C)    (mN/m)
+#https://www.engineeringtoolbox.com/water-surface-tension-d_597.html
+0       75.6
+5       74.9
+10      74.2
+20      72.8
+30      71.2
+40      69.6
+50      67.9
+60      66.2
+70      64.4
+80      62.6
+90      60.8
+100     58.9
+150     48.2
+200     37.6
+250     26.4
+300     14.7
+350     3.7
+374     0

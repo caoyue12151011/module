@@ -1,6 +1,9 @@
+import os
 import numpy as np 
 import matplotlib.pyplot as plt 
 
+# get path of this script
+path = os.path.dirname(os.path.abspath(__file__))
 
 def pdf2points(x, pdf, N):
     '''
@@ -46,5 +49,5 @@ def test():
     plt.xlabel('x')
     plt.ylabel('Probability density')
     plt.tight_layout()
-    plt.savefig('/home/dev/Documents/coding/module/image/PDF/pdf2points.pdf')
+    plt.savefig(f'{path}/image/pdf2points.pdf')
     plt.close()

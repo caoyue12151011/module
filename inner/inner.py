@@ -1,8 +1,12 @@
+import os
 import time
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.path import Path
 from matplotlib.patches import Circle, Ellipse
+
+# get path of this script
+path = os.path.dirname(os.path.abspath(__file__))
 
 def circle(x, y, x0, y0, r, boolean='union'):
     '''
@@ -191,7 +195,7 @@ def test():
     plt.xlabel('x')
     plt.ylabel('y')
     plt.tight_layout()
-    plt.savefig('/home/dev/Documents/coding/module/image/inner/circle.pdf')
+    plt.savefig(f'{path}/image/circle.pdf')
     plt.close()
     #'''
 
@@ -218,7 +222,7 @@ def test():
     plt.xlabel('x')
     plt.ylabel('y')
     plt.tight_layout()
-    plt.savefig('/home/dev/Documents/coding/module/image/inner/ellipse.pdf')
+    plt.savefig(f'{path}/image/ellipse.pdf')
     plt.close()
     #'''
 
@@ -240,7 +244,7 @@ def test():
     plt.xlabel('x')
     plt.ylabel('y')
     plt.tight_layout()
-    plt.savefig('/home/dev/Documents/coding/module/image/inner/polygon.pdf')
+    plt.savefig(f'{path}/image/polygon.pdf')
     plt.close()
     #'''
 
@@ -269,8 +273,7 @@ def test():
     plt.xlabel('x')
     plt.ylabel('y')
     plt.tight_layout()
-    plt.savefig('/home/dev/Documents/coding/module/image/inner/'
-                'sector_ring.pdf')
+    plt.savefig(f'{path}/image/sector_ring.pdf')
     plt.close()
     #'''
     
@@ -302,8 +305,7 @@ def test():
     plt.xlabel('x')
     plt.ylabel('y')
     plt.tight_layout()
-    plt.savefig('/home/dev/Documents/coding/module/image/inner/'
-                'elliptic_sector_ring.pdf')
+    plt.savefig(f'{path}/image/elliptic_sector_ring.pdf')
     plt.close()
     #'''
     

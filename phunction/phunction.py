@@ -26,6 +26,7 @@ Earth
 
 demo: demonstrate the relations
 '''
+import os
 import colour
 import numpy as np 
 import matplotlib.pyplot as plt 
@@ -41,26 +42,25 @@ plt.rcParams['ytick.labelsize'] = 12
 plt.rcParams['axes.labelsize'] = 16
 plt.rcParams['legend.fontsize'] = 13
 
-# parameters
-dire_data = '/Users/yuecao/Documents/coding/module/data/phunction'
-dire_img = '/Users/yuecao/Documents/coding/module/image/phunction'
+# get path of this script
+path = os.path.dirname(os.path.abspath(__file__))
 
 # load data 
 Data = {}
 name = 'earth_density_vs_radius'
-r, rho = np.loadtxt(f'{dire_data}/{name}.txt').transpose()
+r, rho = np.loadtxt(f'{path}/data/{name}.txt').transpose()
 Data[name] = {'r': r, 'rho': rho}
 
 name = 'H2O_density_vs_T'
-T, rho = np.loadtxt(f'{dire_data}/{name}.txt').transpose()
+T, rho = np.loadtxt(f'{path}/data/{name}.txt').transpose()
 Data[name] = {'T': T, 'rho': rho}
 
 name = 'H2O_surface_tension_vs_T'
-T, sigma = np.loadtxt(f'{dire_data}/{name}.txt').transpose()
+T, sigma = np.loadtxt(f'{path}/data/{name}.txt').transpose()
 Data[name] = {'T': T, 'sigma': sigma}
 
 name = 'H2O_vapor_P_viscosity_vs_T'
-T, P, mu = np.loadtxt(f'{dire_data}/{name}.txt').transpose()
+T, P, mu = np.loadtxt(f'{path}/data/{name}.txt').transpose()
 Data[name] = {'T': T, 'P': P, 'mu': mu}
 
 # main-sequence star ----------------------------------------------------------
@@ -425,7 +425,8 @@ def demo():
 
         _min = np.nanmin(res)
         plt.text(-3,_min,'See level',color='k',fontsize=12,rotation=90)
-        plt.text(h_tp/1e3-3,_min,'Tropopause',color='r',fontsize=12,rotation=90)
+        plt.text(h_tp/1e3-3,_min,'Tropopause',color='r',fontsize=12,
+        rotation=90)
         plt.text(h_sp/1e3-3,_min,'Stratopause',color='b',fontsize=12,
             rotation=90)
         plt.text(h_mp/1e3-3,_min,'Mesopause',color='g',fontsize=12,rotation=90)
@@ -462,7 +463,7 @@ def demo():
     plt.ylabel(r'$\rho\rm\ (g\ cm^{-3})$')
     plt.grid()
     plt.tight_layout()
-    plt.savefig(f'{dire_img}/r2rho_earth.pdf')
+    plt.savefig(f'{path}/image/r2rho_earth.pdf')
     plt.close()
     #'''
 
@@ -486,11 +487,9 @@ def demo():
     plt.ylabel(r'$g\rm\ (m\ s^{-2})$')
     plt.grid()
     plt.tight_layout()
-    plt.savefig(f'{dire_img}/r2g_earth.pdf')
+    plt.savefig(f'{path}/image/r2g_earth.pdf')
     plt.close()
     #'''
-
-
 
     # others ..................................................................
 

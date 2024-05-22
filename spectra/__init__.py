@@ -40,19 +40,14 @@ Splatalog: dict of parameters of transitions
         'C_Q1': [linear only]
         'C_Q2', 'C_Q3', 'C_Q4': [symmetric top only]
 """
+import os
 import dill
-import socket
 import numpy as np
 import astropy.units as u
 import astropy.constants as ct
 
 # path of this package
-hostname = socket.gethostname()
-path = None
-if hostname == 'Yues-MacBook-Pro.local':
-    path = '/Users/yuecao/Documents/coding/module/spectra'
-elif hostname == 'yue-caos-ubuntu':
-    path = '/home/dev/Documents/coding/module/spectra'
+path = os.path.dirname(os.path.abspath(__file__))
 
 # load original splatalog
 Splatalog0 = dill.load(open(f'{path}/data/Splatalog0.p','rb'))
