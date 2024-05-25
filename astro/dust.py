@@ -62,7 +62,7 @@ def dust_SED(lamda, T_dust, lgN, beta, Gamma, sw_thin=False):
 
 
 def test():
-    #''' dust_SED()
+    ''' dust_SED()
     # parameters 
     lamda = np.linspace(50, 1000, 300)  # [um]
     T = 20  # [K]
@@ -72,16 +72,16 @@ def test():
 
     # figure parameters 
     figsize = (8, 5)
-    fx_p = .45  # fraction of the plotting panel
+    fx_p = .4  # fraction of the plotting panel
     fy_p = .15
-    fw_p = .5
+    fw_p = .55
     fh_p = .8
     fx_s1 = .05
     fx_s2 = .15
     fx_s3 = .25
     fy_s = .1
     fw_s = .05
-    fh_s = .85
+    fh_s = .8
 
     # spectrum
     I = 10**dust_SED(lamda, T, lgN, beta, Gamma)
@@ -89,7 +89,7 @@ def test():
 
     # plotting panel
     fig = plt.figure(figsize=figsize)
-    ax = plt.axes([fx_p, fy_p, fw_p, fh_p])
+    ax = fig.add_axes([fx_p, fy_p, fw_p, fh_p])
     plt.yscale('log')
     l, = plt.plot(lamda, I, color='k', label='Real')
     l_thin, = plt.plot(lamda, I_thin, ls='--', color='k', 
@@ -100,13 +100,13 @@ def test():
     plt.ylabel(r'$\rm Intensity\ (Jy\ sr^{-1})$')
     
     # sliders 
-    sld1 = Slider(ax=plt.axes([fx_s1,fy_s,fw_s,fh_s]),
+    sld1 = Slider(ax=fig.add_axes([fx_s1,fy_s,fw_s,fh_s]),
                   label=r'$T_{\rm dust}\rm\ (K)$',
                   valmin=0, valmax=200, valinit=T, orientation='vertical')
-    sld2 = Slider(ax=plt.axes([fx_s2,fy_s,fw_s,fh_s]),
+    sld2 = Slider(ax=fig.add_axes([fx_s2,fy_s,fw_s,fh_s]),
                   label=r'$\lg(N_{\rm H_2}/\rm cm^{-2})$',
                   valmin=5, valmax=30, valinit=lgN, orientation='vertical')
-    sld3 = Slider(ax=plt.axes([fx_s3,fy_s,fw_s,fh_s]),
+    sld3 = Slider(ax=fig.add_axes([fx_s3,fy_s,fw_s,fh_s]),
                   label=r'$\beta$',
                   valmin=-5, valmax=8, valinit=beta, orientation='vertical')
 
@@ -121,15 +121,20 @@ def test():
         I = 10**dust_SED(lamda, T, lgN, beta, Gamma)
         I_thin = 10**dust_SED(lamda, T, lgN, beta, Gamma, sw_thin=True)
 
+        ymin = min(np.nanmin(I), np.nanmin(I_thin))
+        ymax = max(np.nanmax(I), np.nanmax(I_thin))
+
         # upload plots
         l.set_ydata(I)
         l_thin.set_ydata(I_thin)
+        ax.set_ylim(ymin, ymax)
         fig.canvas.draw_idle()
 
     # register the update function with each slider
     sld1.on_changed(update)
     sld2.on_changed(update)
     sld3.on_changed(update)
+    plt.show()
     #'''
 
 
