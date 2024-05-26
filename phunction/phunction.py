@@ -1,15 +1,21 @@
 '''
 Contents
 --------
+Blackbody
+    SED_bb: blackbody SED
+    SED2color: SED to RGB color
+    T2color_bb: blackbody temperature to RGB color
+
 Main-sequence star
     m2L_MS: mass to luminosity 
     L2m_MS: luminosity to mass 
     m2R_MS: mass to radius 
     m2T_MS: mass to surface temperature 
-    SED2color: SED to RGB color
-    T2color_bb: blackbody temperature to RGB color
     m2color_MS: mass to RGB color 
 
+Interstellar dust
+    SED_dust
+    
 Water
     T2rho_H2O: temperature to density 
     T2surface_tension_H2O: temperature to surface tension 
@@ -29,10 +35,11 @@ demo: demonstrate the relations
 import os
 import colour
 import numpy as np 
-import matplotlib.pyplot as plt 
 import astropy.units as u 
 import astropy.constants as ct
+import matplotlib.pyplot as plt 
 from ambiance import Atmosphere as Atm 
+from matplotlib.widgets import Slider, Button
 
 # change default matplotlib fonts
 plt.rcParams['font.family'] = 'Times New Roman'
@@ -62,6 +69,85 @@ Data[name] = {'T': T, 'sigma': sigma}
 name = 'H2O_vapor_P_viscosity_vs_T'
 T, P, mu = np.loadtxt(f'{path}/data/{name}.txt').transpose()
 Data[name] = {'T': T, 'P': P, 'mu': mu}
+
+# blackbody -------------------------------------------------------------------
+
+# constants
+C_T = (ct.h*ct.c/ct.k_B).to_value(u.K*u.um)
+C_I = (2*ct.h*ct.c).to_value(u.um**3*u.Jy)
+
+def SED_bb(lamda, T):
+    """
+    To effeciently calculate the blackbody SED. 
+
+    Inputs
+    ------
+    lamda: [um], scalar or 1darray, wavelength
+    T: [K], temperature
+
+    Returns
+    -------
+    B_nu: [Jy/sr], intensity
+    """
+    return C_I / lamda**3 / (np.exp(C_T/T/lamda) - 1)
+
+
+def SED2color(lamda, I_lamda):
+    '''
+    Derive the RGB color given the SED.
+
+    Inputs
+    ------
+    lamda: [nm], 1darray, wavelength. lamda[0]<780, lamda[-1]>360, and the 
+        interval must be 1, 5, 10 or 20nm
+    I_lamda: [any unit], spectral energy per wavelength, i.e. dI/d(lamda)
+
+    Returns
+    -------
+    RGB: [0~1], array of length 3. 
+    '''
+    # check inputs 
+    if lamda[0] >= 780 or lamda[-1] <= 360:
+        print('Error: wavelengths not in the legit range [360,780] nm.')
+
+    # interpolate SED
+    lamda0 = np.linspace(360, 780, 421)
+    I_lamda0 = np.interp(lamda0, lamda, I_lamda)
+
+    sp = colour.SpectralDistribution(I_lamda0, lamda0)
+    RGB = colour.XYZ_to_sRGB(colour.sd_to_XYZ(sp))
+    RGB /= max(RGB)
+    RGB[RGB<0.] = 0.
+
+    return RGB
+
+
+def T2color_bb(T):
+    '''
+    Derive the RGB color array of a blackbody of temperature T. Nan inputs give
+    white color.
+
+    Inputs
+    ------
+    T: [K], scalar or 1d array
+
+    Returns
+    -------
+    RGB: [0~1], 3 or (len(T),3) array
+    '''
+    is_scalar = not hasattr(T, "__len__")
+    if is_scalar:
+        T = np.array([T])
+    
+    SED = [colour.sd_blackbody(t) for t in T]
+    RGB = np.array([colour.XYZ_to_sRGB(colour.sd_to_XYZ(sed)) for sed in SED])
+    _max = np.max(RGB,axis=1)
+    RGB /= _max[:,np.newaxis]
+    RGB[RGB<0.] = 0.
+
+    if is_scalar:
+        RGB = RGB[0]
+    return RGB
 
 # main-sequence star ----------------------------------------------------------
 
@@ -126,53 +212,6 @@ def m2T_MS(m):
     return T
 
 
-def SED2color(SED):
-    '''
-    Derive the RGB color given the SED.
-
-    Inputs
-    ------
-    SED: SED object or array of SED object. See the doc of colour.sd_to_XYZ. 
-        For example, colour.sd_blackbody(T) generates an SED object.
-
-    Returns
-    -------
-    RGB: array of shape 3 or (SED_#,3). 
-    '''
-    RGB = None
-    if hasattr(SED,"__len__"):
-        RGB = colour.XYZ_to_sRGB(colour.sd_to_XYZ(SED))
-        RGB /= max(RGB)
-    else:
-        RGB = np.array([colour.XYZ_to_sRGB(colour.sd_to_XYZ(sed)) 
-            for sed in SED])
-        _max = np.max(RGB,axis=1)
-        RGB /= _max[:,np.newaxis]
-
-    RGB[RGB<0.] = 0.
-
-    return RGB
-
-
-def T2color_bb(T):
-    '''
-    Derive the RGB color array of a blackbody of temperature T. Nan inputs give
-    white color.
-
-    Inputs
-    ------
-    T: [K], scalar or 1d array
-
-    Returns
-    -------
-    RGB: 3 or (len(T),3) array
-    '''
-    if hasattr(T, "__len__"):
-        return SED2color(colour.sd_blackbody(T))
-    else:
-        return SED2color([colour.sd_blackbody(t) for t in T])
-
-
 def m2color_MS(m):
     '''
     Derive the RGB color array of a main-sequence star given its mass, assuming
@@ -187,6 +226,46 @@ def m2color_MS(m):
     RGB: of shape 3 or (len(m),3)
     '''
     return T2color_bb(m2T_MS(m))
+
+# Interstellar dust -----------------------------------------------------------
+
+# constants 
+mu_H2 = 2.8  # molecular mass of ISM per hydrogen atom
+kappa0 = 10*u.cm**2/u.g
+lamda0 = 300  # [um]
+
+# derived constants
+C_tau = (mu_H2*ct.m_n*kappa0).to_value(u.cm**2)
+
+def SED_dust(lamda, T, lgN, beta, Gamma, sw_thin=False):
+    '''
+    To calculate the SED of interstellar dust using the graybody model. 
+    This function should be fast since it'll be used for pixel-by-pixel SED 
+    fitting. N_H2 and I_nu (see below) are logarithmized since they span 
+    orders of magnitude and may cause error in the SED fitting.
+
+    Inputs
+    ------
+    lamda: [um], scalar or 1darray, wavelength
+    T: [K], scalar, dust temperature
+    lgN: = lg(N_H2/cm^-2), scalar, log H2 column density
+    beta: scalar, opacity power index
+    Gamma: scalar, gas-to-dust mass ratio
+    sw_thin: bool, whether using the optically thin limit
+
+    Returns
+    -------
+    lgI: = lg(I/(Jy/sr)), log intensity
+    '''
+    tau = C_tau * (lamda/lamda0)**-beta * 10**lgN / Gamma
+    tau = tau.astype(float)
+    B_nu = SED_bb(lamda, T)
+    if sw_thin:
+        lgI = np.log10(B_nu * tau)
+    else:   
+        lgI = np.log10(B_nu * (1-np.exp(-tau)))
+
+    return lgI
 
 # Water -----------------------------------------------------------------------
 
@@ -328,6 +407,84 @@ def r2g_earth(r):
 
 
 def demo():
+    # Interstellar dust .......................................................
+
+    #''' SED_dust
+    # parameters 
+    lamda = np.linspace(.36, .78, 300)  # [um]
+    T = 6000  # [K]
+    lgN = 15.9
+    beta = 3
+    Gamma = 100
+
+    # figure parameters 
+    figsize = (8, 5)
+    fx_p = .4  # fraction of the plotting panel
+    fy_p = .15
+    fw_p = .55
+    fh_p = .8
+    fx_s1 = .05
+    fx_s2 = .15
+    fx_s3 = .25
+    fy_s = .1
+    fw_s = .05
+    fh_s = .8
+
+    # spectrum
+    I = 10**SED_dust(lamda, T, lgN, beta, Gamma)
+    I_thin = 10**SED_dust(lamda, T, lgN, beta, Gamma, sw_thin=True)
+
+    # plotting panel
+    fig = plt.figure(figsize=figsize)
+    ax = fig.add_axes([fx_p, fy_p, fw_p, fh_p])
+    plt.yscale('log')
+    l, = plt.plot(lamda, I, color='k', label='Real')
+    l_thin, = plt.plot(lamda, I_thin, ls='--', color='k', 
+                       label='Optically thin')
+    plt.legend()
+    plt.grid()
+    plt.xlabel(r'$\lambda\rm\ (\mu m)$')
+    plt.ylabel(r'$\rm Intensity\ (Jy\ sr^{-1})$')
+    
+    # sliders 
+    sld1 = Slider(ax=fig.add_axes([fx_s1,fy_s,fw_s,fh_s]),
+                  label=r'$T_{\rm dust}\rm\ (K)$',
+                  valmin=0, valmax=60000, valinit=T, orientation='vertical')
+    sld2 = Slider(ax=fig.add_axes([fx_s2,fy_s,fw_s,fh_s]),
+                  label=r'$\lg(N_{\rm H_2}/\rm cm^{-2})$',
+                  valmin=5, valmax=30, valinit=lgN, orientation='vertical')
+    sld3 = Slider(ax=fig.add_axes([fx_s3,fy_s,fw_s,fh_s]),
+                  label=r'$\beta$',
+                  valmin=-5, valmax=8, valinit=beta, orientation='vertical')
+
+    # The function to be called anytime a slider's value changes
+    def update(val):
+        # new slider values
+        T = sld1.val
+        lgN = sld2.val
+        beta = sld3.val 
+
+        # new data
+        I = 10**SED_dust(lamda, T, lgN, beta, Gamma)
+        I_thin = 10**SED_dust(lamda, T, lgN, beta, Gamma, sw_thin=True)
+
+        ymin = min(np.nanmin(I), np.nanmin(I_thin))
+        ymax = max(np.nanmax(I), np.nanmax(I_thin))
+
+        # upload plots
+        l.set_ydata(I)
+        l_thin.set_ydata(I_thin)
+        ax.set_ylim(ymin, ymax)
+        fig.canvas.draw_idle()
+
+    # register the update function with each slider
+    sld1.on_changed(update)
+    sld2.on_changed(update)
+    sld3.on_changed(update)
+    plt.savefig(f'{path}/image/dust_SED.pdf')
+    plt.show()
+    #'''
+
     # water ...................................................................
 
     ''' T2rho_H2O
